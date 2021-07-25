@@ -4,7 +4,8 @@
 //! - R to reset
 //! - F to fix aspect ratio
 //! - Hold shift while selecting area to zoom without aspect ratio constraint
-//! - Scroll to change the iteration count
+//! - Scroll up/down to change the iteration count by 10
+//! - Scroll left/right to change the iteration count by 1
 
 use gears::{
     glam::{DVec2, Vec4},
@@ -170,10 +171,10 @@ impl EventLoopTarget for App {
                 self.shifting = *state == ElementState::Pressed;
             }
             WindowEvent::MouseWheel {
-                delta: MouseScrollDelta::LineDelta(_, y),
+                delta: MouseScrollDelta::LineDelta(x, y),
                 ..
             } => {
-                self.iterations += (*y as i32) * 10;
+                self.iterations += (*x as i32) + (*y as i32) * 10;
             }
             WindowEvent::MouseInput {
                 button: MouseButton::Right,
