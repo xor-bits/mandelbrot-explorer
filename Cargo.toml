@@ -1,14 +1,6 @@
-[package]
-name = "mandelbrot-explorer"
-version = "0.1.0"
-authors = ["Overpeek <overpeek.fin@gmail.com>"]
-edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-log = "~0.4"
-env_logger = "~0.9"
-parking_lot = "~0.11"
-gears = { path = "../gears/gears", features = [ "runtime_shaders" ] }
-# gears = { path = "https://github.com/Overpeek/gears", features = [ "runtime_shaders" ] }
+[workspace]
+members = [
+	"core",
+	"android",
+	"desktop"
+]
