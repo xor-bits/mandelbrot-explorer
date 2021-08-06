@@ -19,6 +19,7 @@ mandelbrot-explorer-core = { path = "../core" }
 apk_name = "mandelbrot-explorer"
 label = "Mandelbrot Explorer"
 runtime_libs = "lib/"
+build_targets = [ "aarch64-linux-android", "x86_64-linux-android" ]
 
 [[package.metadata.android.uses_feature]]
 name = "android.hardware.vulkan.level"

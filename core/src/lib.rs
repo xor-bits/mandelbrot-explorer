@@ -27,9 +27,9 @@ mod shader;
 use shader::Vec2;
 
 #[cfg(feature = "fp64")]
-type float = f64;
+type Float = f64;
 #[cfg(not(feature = "fp64"))]
-type float = f32;
+type Float = f32;
 
 fn map<T: Copy + Add<Output = T> + Sub<Output = T> + Div<Output = T> + Mul<Output = T>>(
     value: T,
@@ -89,7 +89,7 @@ impl App {
 
     fn fix_aspect(&self) {
         let mut settings = self.settings.write();
-        let aspect = self.frame.aspect() as float;
+        let aspect = self.frame.aspect() as Float;
         let height = settings.draw_region.bottom_right.y - settings.draw_region.top_left.y;
         settings.draw_region.bottom_right.x = settings.draw_region.top_left.x + height * aspect;
     }
@@ -134,14 +134,14 @@ impl App {
             map(
                 cursor.x,
                 0.0,
-                self.frame.size().0 as float,
+                self.frame.size().0 as Float,
                 settings.draw_region.top_left.x,
                 settings.draw_region.bottom_right.x,
             ),
             map(
                 cursor.y,
                 0.0,
-                self.frame.size().1 as float,
+                self.frame.size().1 as Float,
                 settings.draw_region.top_left.y,
                 settings.draw_region.bottom_right.y,
             ),
@@ -150,9 +150,9 @@ impl App {
         if settings.dragging {
             settings.select_region.bottom_right = cursor;
             if !settings.shifting {
-                let aspect = self.frame.aspect() as float;
+                let aspect = self.frame.aspect() as Float;
                 let dist = (settings.select_region.top_left - cursor).length()
-                    / std::f64::consts::SQRT_2 as float;
+                    / std::f64::consts::SQRT_2 as Float;
                 let sign = (cursor - settings.select_region.top_left).signum();
 
                 settings.select_region.bottom_right =
@@ -339,6 +339,7 @@ pub fn main(android: bool) {
 
     let mut frame = Some(frame);
     let mut app: Option<Arc<RwLock<App>>> = None;
+    let mut suspended = true;
 
     let make_app = |frame: &mut Option<Frame>, app: &mut Option<Arc<RwLock<App>>>| {
         let frame = frame.take().unwrap();
@@ -353,6 +354,7 @@ pub fn main(android: bool) {
     };
 
     if !android {
+        suspended = false;
         make_app(&mut frame, &mut app);
     }
 
@@ -361,8 +363,8 @@ pub fn main(android: bool) {
 
         match event {
             Event::WindowEvent { event, .. } => {
-                if let Some(app) = app.as_ref() {
-                    app.write().event(&event);
+                if !suspended {
+                    app.as_ref().unwrap().write().event(&event);
                 }
 
                 match event {
@@ -373,13 +375,22 @@ pub fn main(android: bool) {
                 }
             }
             Event::RedrawEventsCleared => {
-                if let Some(app) = app.as_ref() {
-                    app.write().frame();
+                if !suspended {
+                    app.as_ref().unwrap().write().frame();
                 }
+            }
+            Event::Suspended => {
+                suspended = true;
             }
             Event::Resumed => {
                 if android {
-                    make_app(&mut frame, &mut app)
+                    suspended = false;
+                    if app.is_none() {
+                        make_app(&mut frame, &mut app)
+                    } else {
+                        let app = app.as_ref().unwrap().read();
+                        app.renderer.recreate_surface(app.frame.window());
+                    }
                 }
             }
             _ => {}
