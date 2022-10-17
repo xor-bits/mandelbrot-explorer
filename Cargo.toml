@@ -1,0 +1,15 @@
+[package]
+name = "mandelbrot-explorer"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bytemuck = { version = "1.12.1", features = ["derive"] }
+
+[dependencies.srs2dge]
+default-features = false
+features = ["all"]
+git = "https://github.com/Overpeek/srs2dge"
+rev = "69dd90a4791fb23e67c254fbeb2093a0678f9f6f"
