@@ -13,14 +13,12 @@ use srs2dge::prelude::*;
 
 //
 
-const SHADER: &str = include_str!("main.wgsl");
-
-//
-
 #[derive(Debug, Clone, Copy, Zeroable, Pod)]
 #[repr(C)]
 pub struct Ubo {
     pub aspect: f32,
+    pub zoom: f32,
+    pub points: u32,
     // _pad: [f32; 3],
 }
 
@@ -34,7 +32,12 @@ pub struct FractalShader {
 
 impl FractalShader {
     pub fn new(target: &Target) -> Self {
-        let module = ShaderModule::new_wgsl_source(target, SHADER.into())
+        let source =
+            std::fs::read_to_string("src/main.wgsl").expect("Failed to read shader source");
+
+        // let module = ShaderModule::new_wgsl_source(target, include_str!("main.wgsl").into())
+        //     .unwrap_or_else(|err| panic!("Shader compilation failed: {err}"));
+        let module = ShaderModule::new_wgsl_source(target, source.into())
             .unwrap_or_else(|err| panic!("Shader compilation failed: {err}"));
 
         let layout = Self::bind_group_layout(&target.get_device());
@@ -59,21 +62,33 @@ impl FractalShader {
 }
 
 impl<'a> Layout<'a> for FractalShader {
-    type Bindings = &'a UniformBuffer<Ubo>;
+    type Bindings = (&'a UniformBuffer<Ubo>, &'a UniformBuffer<[Vec2; 2048]>);
 
     fn bind_group_layout(device: &Device) -> BindGroupLayout {
         device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: label!(),
-            entries: &[BindGroupLayoutEntry {
-                binding: 0,
-                visibility: ShaderStages::VERTEX,
-                ty: BindingType::Buffer {
-                    ty: BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            entries: &[
+                BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
         })
     }
 
@@ -81,10 +96,16 @@ impl<'a> Layout<'a> for FractalShader {
         self.device.create_bind_group(&BindGroupDescriptor {
             label: label!(),
             layout: &self.layout,
-            entries: &[BindGroupEntry {
-                binding: 0,
-                resource: bindings.inner().as_entire_binding(),
-            }],
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: bindings.0.inner().as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: bindings.1.inner().as_entire_binding(),
+                },
+            ],
         })
     }
 }

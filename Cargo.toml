@@ -7,9 +7,10 @@ edition = "2021"
 
 [dependencies]
 bytemuck = { version = "1.12.1", features = ["derive"] }
+rug = { version = "1.17.0", default-features = false, features = ["serde", "float"] }
 
 [dependencies.srs2dge]
-default-features = false
-features = ["all"]
+#default-features = false
+#features = ["all"]
 git = "https://github.com/Overpeek/srs2dge"
-rev = "69dd90a4791fb23e67c254fbeb2093a0678f9f6f"
+rev = "76925e7b076090a7d1127f8f325b6b7111631a4c"
