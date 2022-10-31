@@ -1,5 +1,6 @@
+use gui::{root, Root};
 use rug::{ops::CompleteRound, Assign, Float};
-use shader::{FractalShader, Ubo};
+use shader::{FractalShader, Ubo, ZoomPointArray};
 use srs2dge::winit::event::{MouseScrollDelta, WindowEvent};
 use std::{
     ops::{Add, AddAssign, SubAssign},
@@ -10,6 +11,7 @@ use srs2dge::prelude::*;
 
 //
 
+mod gui;
 mod shader;
 
 //
@@ -20,14 +22,21 @@ struct App {
     ks: KeyboardState,
     ul: Option<UpdateLoop>,
 
+    frames: Reporter,
+    dataset: Reporter,
+
     zoom: f32,
     points_len: u32,
     point: (Float, Float),
 
     quad: BatchRenderer,
     ubo: UniformBuffer<Ubo>,
-    points: UniformBuffer<[Vec2; 2048]>,
+    points: UniformBuffer<ZoomPointArray>,
     shader: FractalShader,
+
+    gui: Gui,
+    root: Root,
+    debug_info: bool,
 }
 
 //
@@ -55,14 +64,9 @@ async fn init(target: &EventLoopTarget) -> App {
     ));
 
     let point = (Float::new(512).add(-1.0), Float::new(512).add(0.2));
-
-    // deep zoom point buffer
-    let mut points_data = deep_zoom(&point, 2048);
-    let points_len = points_data.len() as u32;
-    points_data.resize(2048, Vec2::ZERO);
-    let mut points = [Vec2::ZERO; 2048];
-    points.clone_from_slice(&points_data[..]);
-    let points = UniformBuffer::new_single(&target, points);
+    // let (points, points_len) = points(&point);
+    let points = UniformBuffer::new(&target, 1048576); // 1MiB
+    let points_len = 0;
 
     // mvp matrix
     let ubo = UniformBuffer::new_single(
@@ -78,6 +82,10 @@ async fn init(target: &EventLoopTarget) -> App {
     // custom shader for fractal drawing
     let shader = FractalShader::new(&target);
 
+    // gui
+    let gui = Gui::new(&target);
+    let root = root();
+
     // state managers
     let ws = WindowState::new(&window);
     let ks = KeyboardState::new();
@@ -89,6 +97,9 @@ async fn init(target: &EventLoopTarget) -> App {
         ks,
         ul,
 
+        frames: Reporter::new(),
+        dataset: Reporter::new(),
+
         zoom: 1.0,
         points_len,
         point,
@@ -97,6 +108,10 @@ async fn init(target: &EventLoopTarget) -> App {
         ubo,
         points,
         shader,
+
+        gui,
+        root,
+        debug_info: false,
     }
 }
 
@@ -105,6 +120,7 @@ async fn event(app: &mut App, event: Event<'_>, _: &EventLoopTarget, control: &m
     app.ws.event(&event);
     app.ks.event(&event);
 
+    // app events
     if let Event::WindowEvent {
         event:
             WindowEvent::MouseWheel {
@@ -118,13 +134,18 @@ async fn event(app: &mut App, event: Event<'_>, _: &EventLoopTarget, control: &m
         app.zoom -= y * 0.1;
     }
 
+    // gui events
+    if let Some(e) = event.to_static() {
+        app.gui.event(&mut app.root, e);
+    }
+
     // stop if window should close
     if app.ws.should_close {
         *control = ControlFlow::Exit;
     }
 }
 
-fn update(app: &mut App) {
+fn update(app: &mut App, frame: &mut Frame) {
     const SPEED: f32 = 0.05;
     let mut updated = false;
     if app.ks.pressed(VirtualKeyCode::Q) {
@@ -149,33 +170,90 @@ fn update(app: &mut App) {
         app.point.1.sub_assign(app.zoom.exp() * SPEED);
         updated = true;
     }
+    if app.ks.just_pressed(VirtualKeyCode::F1) {
+        app.debug_info = !app.debug_info;
+    }
+    app.ks.clear();
+
+    if app.debug_info {
+        let format_float = |float: &Float| {
+            itertools::intersperse(
+                float
+                    .to_string()
+                    .split('e')
+                    .map(|s| s.trim_end_matches('0').trim_end_matches('.')),
+                "e",
+            )
+            .collect::<String>()
+            // let (sign, string, exp) = float.to_sign_string_exp(10, None);
+            // format!(
+            //     "{}{}{}",
+            //     if sign { "-" } else { "" },
+            //     string.trim_end_matches('0').trim_end_matches('.'),
+            //     if let Some(exp) = exp {
+            //         format!("e{exp}")
+            //     } else {
+            //         String::default()
+            //     }
+            // )
+        };
+
+        app.root.set_text(format!(
+            r#"- [f1] -
+Iterations: {}
+Real: {:2.}
+Imag: {:2.}
+Zoom: {:2.}
+{}
+{}"#,
+            app.points_len,
+            format_float(&app.point.0),
+            format_float(&app.point.1),
+            app.zoom.exp(),
+            app.frames
+                .last()
+                .map(|(int, ps)| format!("FPS: {ps} ({int:?}/f)"))
+                .unwrap_or_default(),
+            app.dataset
+                .last()
+                .map(|(int, _)| format!("Dataset took: {int:?} ({})", app.points_len))
+                .unwrap_or_default(),
+        ));
+    } else {
+        app.root.set_text("- [f1] -");
+    };
 
     if updated {
-        upload(app);
+        // deep zoom point buffer
+        let timer = app.dataset.begin();
+        let (points, len) = points(&app.point);
+        app.points
+            .upload_iter(&mut app.target, frame, 0, len as u64, points.iter());
+        app.points_len = len;
+        app.dataset.end(timer);
     }
 }
 
-fn upload(app: &mut App) {
-    // deep zoom point buffer
-    let mut points_data = deep_zoom(&app.point, 2048);
-    let points_len = points_data.len() as u32;
-    points_data.resize(2048, Vec2::ZERO);
-    let mut points = [Vec2::ZERO; 2048];
-    points.clone_from_slice(&points_data[..]);
-    let points = UniformBuffer::new_single(&app.target, points);
-    app.points = points;
-    app.points_len = points_len;
+fn points(point: &(Float, Float)) -> (Vec<Vec2>, u32) {
+    let points = deep_zoom(point, 2048).collect::<Vec<_>>();
+    let points_len = points.len() as u32;
+
+    (points, points_len)
 }
 
 async fn draw(app: &mut App) {
     let mut frame = app.target.get_frame();
 
+    // fixed timestep updates
     let mut ul = app.ul.take().unwrap();
     ul.update(|| {
-        update(app);
+        update(app, &mut frame);
     });
     app.ul = Some(ul);
 
+    let timer = app.frames.begin();
+
+    // update uniform buffers
     app.ubo.upload_single(
         &mut app.target,
         &mut frame,
@@ -186,31 +264,38 @@ async fn draw(app: &mut App) {
         },
     );
 
+    // generate main quad
     let (vbo, ibo, count) = app.quad.generate(&mut app.target, &mut frame);
     let bg = app.shader.bind_group((&app.ubo, &app.points));
 
+    // gui
+    let gui = app.gui.draw(&mut app.root, &mut app.target, &mut frame);
+
+    // render commands
     frame
         .primary_render_pass()
         .bind_vbo(&vbo)
         .bind_ibo(&ibo)
         .bind_shader(&app.shader)
         .bind_group(&bg)
-        .draw_indexed(0..count, 0, 0..1);
+        .draw_indexed(0..count, 0, 0..1)
+        .draw_gui(&gui);
 
     app.target.finish_frame(frame);
+    app.frames.end(timer);
 }
 
-fn deep_zoom((real0, imag0): &(Float, Float), iterations: u32) -> Vec<Vec2> {
+fn deep_zoom((real0, imag0): &(Float, Float), iterations: u32) -> impl Iterator<Item = Vec2> + '_ {
     let mut real = real0.clone();
     let mut imag = imag0.clone();
 
     let mut re = Float::new(512);
     let mut im = Float::new(512);
 
-    const LIMIT: f32 = 1024.0 * 32.0;
+    const LIMIT: f32 = 1024.0 * 4.0;
 
     (0..iterations)
-        .map(|_| {
+        .map(move |_| {
             re.assign(&real * 2.0);
             im.assign(&imag * 2.0);
 
@@ -224,7 +309,6 @@ fn deep_zoom((real0, imag0): &(Float, Float), iterations: u32) -> Vec<Vec2> {
         })
         .take_while(|(re, im)| (-LIMIT..LIMIT).contains(re) && (-LIMIT..LIMIT).contains(im))
         .map(|(re, im)| Vec2::new(re, im))
-        .collect()
 }
 
 fn main() {

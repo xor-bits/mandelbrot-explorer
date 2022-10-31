@@ -21,7 +21,7 @@ var<uniform> ubo: UniformInput;
 
 @group(0)
 @binding(1)
-var<uniform> zoom: array<vec4<f32>, 1024>;
+var<uniform> zoom: array<vec4<f32>, 1048576>; // 8MiB
 
 //
 
@@ -78,7 +78,7 @@ fn mandelbrot_2(z0: vec2<f32>) -> u32 {
         z.x = tmp;
 
         var d = dz * 0.5 + z;
-        if (d.x * d.x + d.y * d.y >= 512.0) {
+        if (d.x * d.x + d.y * d.y >= 8192.0) {
             break;
         }
     }
@@ -99,17 +99,19 @@ fn fs_main(fin: FragmentInput) -> @location(0) vec4<f32> {
     // var i = mandelbrot(fin.z, 128u);
     var i = mandelbrot_2(fin.z);
 
-    if (i == ubo.points) {
+    if (i + 1u >= ubo.points) {
         return vec4(0.0, 0.0, 0.0, 1.0);
     }
 
     // 2 * pi / 3
     let mult: f32 = 2.09439510239319549231;
 
-    // var v = sin(f32(128u - i)) * 0.5 + 0.5;
-    // var v = fract(f32(i) * 0.1);
-    var vf = f32(i) * 0.01;
-    var v = vec3(sin(vf), sin(vf + mult), sin(vf + 2.0 * mult));
+    var v = vec3(sin(f32(128u - i) * 0.1) * 0.5 + 0.5);
+
+    // var v = vec3(fract(f32(i) * 0.1));
+
+    //var vf = f32(i) * 0.01;
+    //var v = vec3(sin(vf), sin(vf + mult), sin(vf + 2.0 * mult));
 
 
     return vec4(v, 1.0);

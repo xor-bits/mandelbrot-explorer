@@ -22,6 +22,8 @@ pub struct Ubo {
     // _pad: [f32; 3],
 }
 
+pub type ZoomPointArray = Vec2;
+
 pub struct FractalShader {
     inner: Shader<DefaultVertex, DefaultIndex>,
     layout: BindGroupLayout,
@@ -62,7 +64,7 @@ impl FractalShader {
 }
 
 impl<'a> Layout<'a> for FractalShader {
-    type Bindings = (&'a UniformBuffer<Ubo>, &'a UniformBuffer<[Vec2; 2048]>);
+    type Bindings = (&'a UniformBuffer<Ubo>, &'a UniformBuffer<ZoomPointArray>);
 
     fn bind_group_layout(device: &Device) -> BindGroupLayout {
         device.create_bind_group_layout(&BindGroupLayoutDescriptor {
